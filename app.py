@@ -37,4 +37,35 @@ if uploaded_file is not None:
     st.download_button(
         label="⬇️ Download Corrected DOCX",
         data=corrected_file,
-        fi
+        file_name="corrected_vendor_profile.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+    # --- 2️⃣ Check meta title & description lengths ---
+    st.subheader("📏 Meta Title & Description Lengths")
+
+    def check_meta_limits(text):
+        issues = []
+        patterns = {
+            "Meta Title": ("#smts#", "#smte#", 80),
+            "Meta Description": ("#smds#", "#smde#", 180),
+            "Review Meta Title": ("#rmts#", "#rmte#", 80),
+            "Review Meta Description": ("#rmds#", "#rmde#", 180),
+            "Alternative Meta Title": ("#amts#", "#amte#", 80)
+        }
+        for label, (start_tag, end_tag, limit) in patterns.items():
+            match = re.search(f"{re.escape(start_tag)}(.*?){re.escape(end_tag)}", text, re.DOTALL)
+            if match:
+                content = match.group(1).strip()
+                if len(content) > limit:
+                    issues.append((label, content, len(content), "❌ Too long"))
+                else:
+                    issues.append((label, content, len(content), "✅ OK"))
+        return issues
+
+    meta_issues = check_meta_limits(full_text)
+    for label, content, length, status in meta_issues:
+        if "❌" in status:
+            st.error(f"{label} ({length} chars): {status}\n\n{content}")
+        else:
+            st.success(f"{label} ({length} chars): {status}\n\n{content}")
