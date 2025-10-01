@@ -3,6 +3,19 @@ import docx
 import re
 from io import BytesIO
 
+# Set background image
+page_bg_img = """
+<style>
+    .stApp {
+        background: url("background.png");
+        background-size: cover;
+        background-position: center;
+        background-attachment: fixed;
+    }
+</style>
+"""
+st.markdown(page_bg_img, unsafe_allow_html=True)
+
 # App title and logo
 st.set_page_config(page_title="SF VP Spacing & Meta Checker", layout="wide")
 st.image("logo.png", width=150)  # Make sure 'logo.png' exists in repo
@@ -109,3 +122,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
