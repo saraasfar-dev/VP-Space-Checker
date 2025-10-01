@@ -10,7 +10,7 @@ const SeoChecker = ({ data }) => {
   // Helper function to check description length
   const isDescriptionInvalid = (description) => {
     if (!description) return false;
-    return description.length < 130 || description.length > 180; // valid range is 130–180
+    return description.length < 130 || description.length > 180; // valid range is 130-180
   };
 
   return (
