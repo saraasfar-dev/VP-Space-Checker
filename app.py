@@ -5,26 +5,30 @@ from io import BytesIO
 
 # App title and logo
 st.set_page_config(page_title="SF VP Spacing & Meta Checker", layout="wide")
-st.image("logo.png", width=150)  # Make sure your file in GitHub is named 'logo.png'
+st.image("logo.png", width=150)  # Make sure 'logo.png' exists in repo
 st.title("SF VP Spacing & Meta Checker")
 
 st.write("This tool auto-fixes spacing issues in Vendor Profiles and checks Meta Titles/Descriptions for character length compliance.")
 
-# --- Function to fix spacing issues ---
-def fix_spacing_issues(doc):
-    corrected_doc = docx.Document()
+# --- Function to fix spacing issues (edit in place to preserve formatting) ---
+def fix_spacing_issues_inplace(doc):
     spacing_issues = []
 
     for para in doc.paragraphs:
         original_text = para.text
-        corrected_text = re.sub(r"#(\w+)#\s+([^#]+?)\s+#(\w+)#", r"#\1#\2#\3#", original_text)
 
-        if original_text != corrected_text:
+        # Detect spaces after opening tag or before closing tag
+        if re.search(r"#\w+#\s", original_text) or re.search(r"\s#\w+#", original_text):
             spacing_issues.append(original_text.strip())
 
-        corrected_doc.add_paragraph(corrected_text)
+        # Fix spaces: remove space after opening tag and before closing tag
+        corrected_text = re.sub(r"(#\w+#)\s+", r"\1", original_text)  # after opening tag
+        corrected_text = re.sub(r"\s+(#\w+#)", r"\1", corrected_text)  # before closing tag
 
-    return corrected_doc, spacing_issues
+        if corrected_text != original_text:
+            para.text = corrected_text  # update in place, keeps formatting
+
+    return doc, spacing_issues
 
 # --- Function to check meta titles and descriptions ---
 def check_meta_limits(doc):
@@ -62,8 +66,8 @@ uploaded_file = st.file_uploader("Upload a Vendor Profile (.docx)", type=["docx"
 if uploaded_file:
     doc = docx.Document(uploaded_file)
 
-    # Fix spacing issues
-    corrected_doc, spacing_issues = fix_spacing_issues(doc)
+    # Fix spacing issues in place
+    corrected_doc, spacing_issues = fix_spacing_issues_inplace(doc)
 
     # Check meta issues
     meta_issues = check_meta_limits(doc)
@@ -83,7 +87,7 @@ if uploaded_file:
     else:
         st.success("✅ All meta titles and descriptions within limits!")
 
-    # Provide corrected file for download
+    # Provide corrected file for download (formatting preserved)
     buffer = BytesIO()
     corrected_doc.save(buffer)
     buffer.seek(0)
