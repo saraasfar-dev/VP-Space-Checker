@@ -4,6 +4,15 @@ from docx import Document
 from io import BytesIO
 import re
 
+# helper to escape HTML for safe rendering in Streamlit
+def st_escape(s: str) -> str:
+    return (
+        s.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\n", "<br>")
+    )
+
 st.set_page_config(page_title="Vendor Profile Checker", layout="wide")
 st.title("📄 Vendor Profile Checker")
 st.write("Upload a DOCX file. The app auto-fixes spacing around tags and flags meta length issues.")
@@ -23,22 +32,19 @@ def merge_intervals(intervals):
     return merged
 
 if uploaded:
-    # Read bytes once (we'll create two Document objects from it)
     data = uploaded.read()
 
-    # Original text for meta checks (use the original content, before fixes)
+    # Keep one copy for meta checks
     orig_doc_for_meta = Document(BytesIO(data))
     full_text_for_meta = "\n".join([p.text for p in orig_doc_for_meta.paragraphs])
 
-    # Document we will modify in-place (preserve formatting where possible)
+    # Copy for fixing spacing issues
     doc = Document(BytesIO(data))
+    spacing_issue_lines = []
 
-    spacing_issue_lines = []  # keep original para text for display when fixed
+    tag_pattern = re.compile(r"#\w+#")
 
-    tag_pattern = re.compile(r"#\w+#")  # matches #tag#
-    # For each paragraph, find whitespace around tags and remove those whitespace characters
     for para in doc.paragraphs:
-        # Build original paragraph text from runs
         runs = para.runs
         if not runs:
             continue
@@ -46,19 +52,18 @@ if uploaded:
         if not orig_text:
             continue
 
-        # find all tags in the paragraph
-        intervals = []  # intervals of characters to remove (spaces)
+        intervals = []
         for m in tag_pattern.finditer(orig_text):
             tag_s, tag_e = m.start(), m.end()
 
-            # remove whitespace immediately before tag (if any)
+            # whitespace before
             l = tag_s
             while l - 1 >= 0 and orig_text[l - 1].isspace():
                 l -= 1
             if l < tag_s:
                 intervals.append((l, tag_s))
 
-            # remove whitespace immediately after tag (if any)
+            # whitespace after
             r = tag_e
             while r < len(orig_text) and orig_text[r].isspace():
                 r += 1
@@ -66,23 +71,18 @@ if uploaded:
                 intervals.append((tag_e, r))
 
         if not intervals:
-            continue  # nothing to remove in this paragraph
+            continue
 
-        # merge overlapping intervals
         merged = merge_intervals(intervals)
-
-        # mark that this paragraph had spacing issues (show original before fix)
         spacing_issue_lines.append(orig_text)
 
-        # create a boolean mask whether to keep each character (True -> keep)
         keep_mask = [True] * len(orig_text)
         for s, e in merged:
             for i in range(s, e):
                 if 0 <= i < len(orig_text):
                     keep_mask[i] = False
 
-        # Now update runs by slicing from the original text using keep_mask
-        # Compute run boundaries (global indices)
+        # rebuild run text
         boundaries = []
         idx = 0
         for r in runs:
@@ -90,21 +90,16 @@ if uploaded:
             boundaries.append((idx, idx + run_len))
             idx += run_len
 
-        # If sums don't match (defensive), rebuild paragraph as single run fallback
         if idx != len(orig_text):
-            # fallback: replace paragraph text directly (may change formatting)
             new_text = "".join([c for i, c in enumerate(orig_text) if keep_mask[i]])
-            para.clear()  # remove runs
+            para.clear()
             para.add_run(new_text)
         else:
-            # Update each run preserving formatting by assigning new substring
             for (start, end), r in zip(boundaries, runs):
-                # new text for this run: only characters with keep_mask True
                 new_run_text_chars = [orig_text[i] for i in range(start, end) if keep_mask[i]]
-                new_run_text = "".join(new_run_text_chars)
-                r.text = new_run_text  # preserve run formatting, only changing text
+                r.text = "".join(new_run_text_chars)
 
-    # Display spacing issues that were fixed (show original lines)
+    # show spacing issues
     st.subheader("🔧 Lines with spacing issues (auto-fixed)")
     if spacing_issue_lines:
         st.warning("The lines below had spacing problems and were corrected in the downloadable file:")
@@ -113,7 +108,7 @@ if uploaded:
     else:
         st.success("✅ No spacing issues found!")
 
-    # Prepare corrected file for download (saved once)
+    # corrected DOCX download
     buf = BytesIO()
     doc.save(buf)
     buf.seek(0)
@@ -121,4 +116,41 @@ if uploaded:
         label="⬇️ Download corrected DOCX",
         data=buf,
         file_name="corrected_vendor_profile.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+    # meta checks
+    st.subheader("🔎 Meta Title & Description Length Issues")
+    meta_patterns = {
+        "Meta Title": (re.compile(r"#smts#(.*?)#smte#", re.DOTALL | re.IGNORECASE), 80),
+        "Meta Description": (re.compile(r"#smds#(.*?)#smde#", re.DOTALL | re.IGNORECASE), (130, 180)),
+        "Review Meta Title": (re.compile(r"#rmts#(.*?)#rmte#", re.DOTALL | re.IGNORECASE), 80),
+        "Review Meta Description": (re.compile(r"#rmds#(.*?)#rmde#", re.DOTALL | re.IGNORECASE), (130, 180)),
+        "Alternative Meta Title": (re.compile(r"#amts#(.*?)#amte#", re.DOTALL | re.IGNORECASE), 80),
+    }
+
+    any_meta_issue = False
+    for label, (pattern, limit) in meta_patterns.items():
+        for m in pattern.finditer(full_text_for_meta):
+            content = m.group(1).strip()
+            length = len(content)
+            if isinstance(limit, tuple):
+                mn, mx = limit
+                if length < mn or length > mx:
+                    any_meta_issue = True
+                    st.markdown(
+                        f"**{label} ({length} chars)**: "
+                        f"<span style='color:red'>{st_escape(content)}</span>",
+                        unsafe_allow_html=True,
+                    )
+            else:
+                if length > limit:
+                    any_meta_issue = True
+                    st.markdown(
+                        f"**{label} ({length} chars)**: "
+                        f"<span style='color:red'>{st_escape(content)}</span>",
+                        unsafe_allow_html=True,
+                    )
+
+    if not any_meta_issue:
+        st.success("✅ All meta titles and descriptions are within specified limits.")
