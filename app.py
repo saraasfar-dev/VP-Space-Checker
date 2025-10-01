@@ -5,7 +5,14 @@ from io import BytesIO
 
 # App title and logo
 st.set_page_config(page_title="SF VP Spacing & Meta Checker", layout="wide")
-st.image("logo.png", width=150)  # Make sure 'logo.png' exists in repo
+# --- Company Logo ---
+theme = st.get_option("theme.base")  # detects Streamlit theme: "light" or "dark"
+
+if theme == "dark":
+    st.image("logo.png", width=150)   # white logo for dark mode
+else:
+    st.image("logo_1.png", width=150) # black logo for light mode
+  # Make sure 'logo.png' exists in repo
 st.title("SF VP Spacing & Meta Checker")
 
 st.write("This tool auto-fixes spacing issues in Vendor Profiles and checks Meta Titles/Descriptions for character length compliance.")
@@ -109,3 +116,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
