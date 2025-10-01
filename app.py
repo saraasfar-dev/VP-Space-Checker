@@ -126,3 +126,14 @@ def main():
 
 if __name__ == "__main__":
     main()
+# Footer
+st.markdown(
+    """
+    <hr style="margin-top:50px; margin-bottom:10px;">
+    <div style="text-align:center; color:grey; font-size:14px;">
+        Developed by <b>Sarah Asfar</b> • © 2025 Software Finder
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
