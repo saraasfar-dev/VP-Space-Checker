@@ -1,3 +1,9 @@
+st.set_page_config(
+    page_title="SF VP Spacing & Meta Checker",
+    page_icon="logo.png",  # will use your logo for browser tab icon too
+    layout="wide"
+)
+
 import streamlit as st
 import re
 from io import BytesIO
@@ -136,4 +142,5 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
