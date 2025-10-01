@@ -1,27 +1,6 @@
 import streamlit as st
-import base64
 import docx
 import re
-
-# ---------------- Background ----------------
-def add_bg_from_local(image_file):
-    with open(image_file, "rb") as f:
-        data = f.read()
-    encoded = base64.b64encode(data).decode()
-    page_bg_img = f"""
-    <style>
-    .stApp {{
-        background-image: url("data:image/png;base64,{encoded}");
-        background-size: cover;
-        background-position: center;
-        background-attachment: fixed;
-    }}
-    </style>
-    """
-    st.markdown(page_bg_img, unsafe_allow_html=True)
-
-# Call background function
-add_bg_from_local("background.png")
 
 # ---------------- App Logo & Title ----------------
 st.image("logo.png", width=150)  # Make sure 'logo.png' is in the repo
