@@ -1,94 +1,107 @@
 import streamlit as st
-from docx import Document
-import io
+import docx
+import re
+from io import BytesIO
 
 # App title and logo
 st.set_page_config(page_title="SF VP Spacing & Meta Checker", layout="wide")
-st.image("logo.png", width=150)  # Make sure 'logo.png' exists in your GitHub repo
+st.image("logo.png", width=150)  # Make sure your file in GitHub is named 'logo.png'
 st.title("SF VP Spacing & Meta Checker")
 
-st.write(
-    """
-    This tool automatically detects and fixes **spacing issues** in VP documents 
-    and checks **meta title/description character limits**.
-    
-    ---
-    """
-)
+st.write("This tool auto-fixes spacing issues in Vendor Profiles and checks Meta Titles/Descriptions for character length compliance.")
 
-# File upload
-uploaded_file = st.file_uploader("Upload a Word file (.docx)", type=["docx"])
-
-def fix_spacing_issues(text):
-    """Fix spacing issues between hashtags and words"""
-    import re
-    corrected = re.sub(r"#\s+([a-zA-Z])", r"#\1", text)   # Fix after #
-    corrected = re.sub(r"([a-zA-Z])\s+#", r"\1#", corrected)  # Fix before #
-    return corrected
-
-def check_meta_limits(text):
-    """Check meta titles (<=80 chars) and meta descriptions (130–180 chars)"""
-    issues = []
-    lines = text.split("\n")
-    for line in lines:
-        lower_line = line.lower()
-        if any(tag in lower_line for tag in ["meta title:", "review meta title:", "alternative meta title:"]):
-            content = line.split(":", 1)[1].strip() if ":" in line else ""
-            if len(content) > 80:
-                issues.append(f"❌ **Meta Title Too Long ({len(content)} chars):** {line}")
-        elif any(tag in lower_line for tag in ["meta description:", "review meta description:", "alternative meta description:"]):
-            content = line.split(":", 1)[1].strip() if ":" in line else ""
-            if len(content) < 130 or len(content) > 180:
-                issues.append(f"❌ **Meta Description Out of Range ({len(content)} chars):** {line}")
-    return issues
-
-if uploaded_file:
-    # Read the uploaded document
-    doc = Document(uploaded_file)
-    full_text = []
-    corrected_doc = Document()
-
-    spacing_issues_found = False
+# --- Function to fix spacing issues ---
+def fix_spacing_issues(doc):
+    corrected_doc = docx.Document()
+    spacing_issues = []
 
     for para in doc.paragraphs:
         original_text = para.text
-        corrected_text = fix_spacing_issues(original_text)
+        corrected_text = re.sub(r"#(\w+)#\s+([^#]+?)\s+#(\w+)#", r"#\1#\2#\3#", original_text)
 
-        # Collect corrected text for download
+        if original_text != corrected_text:
+            spacing_issues.append(original_text.strip())
+
         corrected_doc.add_paragraph(corrected_text)
-        full_text.append(corrected_text)
 
-        # Show lines with spacing issues
-        if corrected_text != original_text:
-            spacing_issues_found = True
-            st.markdown(f"⚠️ **Spacing Fixed:** {original_text} ➝ `{corrected_text}`")
+    return corrected_doc, spacing_issues
 
-    # Meta title/description validation
-    all_text = "\n".join(full_text)
-    meta_issues = check_meta_limits(all_text)
+# --- Function to check meta titles and descriptions ---
+def check_meta_limits(doc):
+    issues = []
+    patterns = {
+        "Meta Title": r"#smts#(.*?)#smte#",
+        "Meta Description": r"#smds#(.*?)#smde#",
+        "Review Meta Title": r"#rmts#(.*?)#rmte#",
+        "Review Meta Description": r"#rmds#(.*?)#rmde#",
+        "Alternative Meta Title": r"#amts#(.*?)#amte#",
+        "Alternative Meta Description": r"#amds#(.*?)#amde#"
+    }
 
-    if meta_issues:
-        st.subheader("Meta Issues Found")
-        for issue in meta_issues:
-            st.markdown(f"<span style='color:red'>{issue}</span>", unsafe_allow_html=True)
+    for para in doc.paragraphs:
+        text = para.text
+        for label, pattern in patterns.items():
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                content = match.group(1).strip()
+                length = len(content)
+
+                # Meta titles must not exceed 80 chars
+                if "Title" in label and length > 80:
+                    issues.append(f"<span style='color:red;'>❌ {label} exceeds 80 chars ({length}): {content}</span>")
+
+                # Meta descriptions must be between 130 and 180 chars
+                elif "Description" in label and (length < 130 or length > 180):
+                    issues.append(f"<span style='color:red;'>❌ {label} out of range (130–180). Length {length}: {content}</span>")
+
+    return issues
+
+# --- File uploader ---
+uploaded_file = st.file_uploader("Upload a Vendor Profile (.docx)", type=["docx"])
+
+if uploaded_file:
+    doc = docx.Document(uploaded_file)
+
+    # Fix spacing issues
+    corrected_doc, spacing_issues = fix_spacing_issues(doc)
+
+    # Check meta issues
+    meta_issues = check_meta_limits(doc)
+
+    # Show results
+    st.subheader("Spacing Issues Detected (Auto-Fixed in Download):")
+    if spacing_issues:
+        for issue in spacing_issues:
+            st.write(f"- {issue}")
     else:
-        st.success("✅ All meta titles and descriptions are within limits!")
+        st.success("✅ No spacing issues found!")
 
-    # Download corrected doc
-    corrected_buffer = io.BytesIO()
-    corrected_doc.save(corrected_buffer)
-    corrected_buffer.seek(0)
+    st.subheader("Meta Title & Description Issues:")
+    if meta_issues:
+        for issue in meta_issues:
+            st.markdown(issue, unsafe_allow_html=True)
+    else:
+        st.success("✅ All meta titles and descriptions within limits!")
+
+    # Provide corrected file for download
+    buffer = BytesIO()
+    corrected_doc.save(buffer)
+    buffer.seek(0)
 
     st.download_button(
         label="📥 Download Corrected File",
-        data=corrected_buffer,
-        file_name="corrected.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        data=buffer,
+        file_name="corrected_vendor_profile.docx",
+        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
-# Footer
+# --- Footer ---
 st.write("---")
 st.markdown(
-    "<p style='text-align:center;'>Developed by <b>Sarah Asfar</b></p>",
+    """
+    <div style='text-align:center;'>
+        <p>Developed by <b>Sarah Asfar</b>  © 2025 Software Finder</p>
+    </div>
+    """,
     unsafe_allow_html=True
 )
