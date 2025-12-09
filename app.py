@@ -1,56 +1,32 @@
+# ================================================================
+#                SIMPLE DOMAIN-ONLY AUTH (NO PASSWORD)
+# ================================================================
 import streamlit as st
-import streamlit_authenticator as stauth
-import yaml
-from yaml.loader import SafeLoader
 
-# ================================================================
-#                     AUTHENTICATION BLOCK
-# ================================================================
+ALLOWED_DOMAIN = st.secrets["auth"]["allowed_domain"]
 
-# Allowed domain
-ALLOWED_DOMAIN = "@softwarefinder.com"
+# Session state init
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
 
-# ---- USER CREDENTIALS (move these to secrets.toml) ----
-# Example format inside .streamlit/secrets.toml:
+def show_login_page():
+    st.title("Software Finder – Secure Login")
+    st.write("Enter your SoftwareFinder work email to access this tool.")
 
-# [auth]
-# emails = ["sara.asfar@softwarefinder.com", "john.doe@softwarefinder.com"]
-# passwords = ["hashed_pw_1", "hashed_pw_2"]
+    email = st.text_input("Work Email")
 
-emails = st.secrets["auth"]["emails"]
-passwords = st.secrets["auth"]["passwords"]  # must be hashed
+    if st.button("Continue"):
+        if not email.endswith(ALLOWED_DOMAIN):
+            st.error(f"Access restricted to {ALLOWED_DOMAIN} users.")
+            return
 
-# Convert to authenticator structure
-credentials = {"usernames": {}}
-for i, email in enumerate(emails):
-    if email.endswith(ALLOWED_DOMAIN):
-        credentials["usernames"][email] = {
-            "email": email,
-            "name": email.split("@")[0],
-            "password": passwords[i]
-        }
+        st.session_state.authenticated = True
+        st.session_state.user_email = email
+        st.success("Access granted.")
 
-# Authentication setup
-authenticator = stauth.Authenticate(
-    credentials,
-    "sf_vp_checker",
-    "auth_token",
-    cookie_expiry_days=1
-)
-
-# Login form
-name, auth_status, username = authenticator.login("Login", "main")
-
-if auth_status is False:
-    st.error("Incorrect email or password.")
-
-elif auth_status is None:
-    st.warning(f"Use your {ALLOWED_DOMAIN} email.")
-
-else:
-    if not username.endswith(ALLOWED_DOMAIN):
-        st.error("Access restricted to Software Finder employees only.")
-        st.stop()
-
-    authenticator.logout("Logout", "sidebar")
-    st.sidebar.success(f"Logged in as {username}")
+# Gatekeeper
+if not st.session_state.authenticated:
+    show_login_page()
+    st.stop()
