@@ -36,7 +36,7 @@ st.set_page_config(page_title="SF VP Spacing & Meta Checker", layout="wide")
 st.image("logo.png", width=150)
 st.title("SF VP Spacing & Meta Checker")
 
-st.write("This tool auto-fixes spacing issues in Vendor Profiles and checks Meta Titles/Descriptions for character length compliance.")
+st.write("Auto-correct spacing between tags in Vendor Profiles and validate Meta Titles & Descriptions for optimal character length.")
 
 # --- Function to fix spacing issues ---
 def fix_spacing_issues_inplace(doc):
@@ -116,3 +116,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
