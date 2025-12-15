@@ -11,7 +11,7 @@ from sendgrid.helpers.mail import Mail
 # CONFIG
 # =========================
 ALLOWED_DOMAIN = "@softwarefinder.com"
-OTP_EXPIRY_MINUTES = 10
+OTP_EXPIRY_MINUTES = 1
 MAX_OTP_ATTEMPTS = 5
 MAX_RESEND_COUNT = 3
 
