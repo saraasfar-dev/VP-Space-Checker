@@ -1,4 +1,5 @@
 streamlit
 python-docx
 streamlit-authenticator
+sendgrid
 
