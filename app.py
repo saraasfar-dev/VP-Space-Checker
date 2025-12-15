@@ -3,11 +3,11 @@ import docx
 import re
 from io import BytesIO
 
-from auth import require_authentication, show_logout_button
+from auth import require_authentication
 
-if require_authentication():
-    show_logout_button()
-    # ... your existing app code here (indented inside this if block)
+if not require_authentication():
+    st.stop()   # ⛔ prevents app from loading
+
 # ================================================================
 #                     MAIN APP STARTS HERE
 # ================================================================
@@ -96,5 +96,6 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
 
 
