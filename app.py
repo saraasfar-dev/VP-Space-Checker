@@ -3,30 +3,6 @@ import docx
 import re
 from io import BytesIO
 
-# ================================================================
-#                     AUTHENTICATION BLOCK (DOMAIN ONLY)
-# ================================================================
-ALLOWED_DOMAIN = "@softwarefinder.com"
-
-# Session state initialization
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
-
-def show_email_page():
-    st.title("Software Finder – Secure Login")
-    st.write("Enter your work email to continue.")
-    email = st.text_input("Work Email")
-    if st.button("Login"):
-        if not email.endswith(ALLOWED_DOMAIN):
-            st.error(f"Access restricted to {ALLOWED_DOMAIN} users.")
-            return
-        st.session_state.authenticated = True
-        st.success("Authentication successful! Welcome.")
-
-# Gatekeeper
-if not st.session_state.authenticated:
-    show_email_page()
-    st.stop()  # Stop until authentication is done
 
 # ================================================================
 #                     MAIN APP STARTS HERE
@@ -116,3 +92,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
