@@ -1,264 +1,191 @@
-"""
-VP Space Checker - OTP Authentication Module
-============================================
-
-CONFIGURATION:
-Set these secrets in Streamlit Cloud (Settings > Secrets):
-    SENDGRID_API_KEY = "EXKAJTC5A8K3W4FZKD9BZGD8"
-    OTP_SENDER_EMAIL = "saraasfar@softwarefinder.com"
-"""
-
 import streamlit as st
 import random
 import time
 import re
 import os
 from datetime import datetime, timedelta
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
-try:
-    from sendgrid import SendGridAPIClient
-    from sendgrid.helpers.mail import Mail
-    SENDGRID_AVAILABLE = True
-except ImportError:
-    SENDGRID_AVAILABLE = False
-
-# CONFIGURATION
+# =========================
+# CONFIG
+# =========================
 ALLOWED_DOMAIN = "@softwarefinder.com"
 OTP_EXPIRY_MINUTES = 10
 MAX_OTP_ATTEMPTS = 5
 MAX_RESEND_COUNT = 3
 
+# =========================
+# SECRETS
+# =========================
 def get_sendgrid_api_key():
-    try:
-        return st.secrets["SENDGRID_API_KEY"]
-    except (KeyError, FileNotFoundError):
-        return os.environ.get("SENDGRID_API_KEY", "")
+    return st.secrets.get("SENDGRID_API_KEY", "")
 
 def get_sender_email():
-    try:
-        return st.secrets["OTP_SENDER_EMAIL"]
-    except (KeyError, FileNotFoundError):
-        return os.environ.get("OTP_SENDER_EMAIL", "noreply@softwarefinder.com")
+    return st.secrets.get("OTP_SENDER_EMAIL", "")
 
+# =========================
+# HELPERS
+# =========================
 def generate_otp():
     return str(random.randint(100000, 999999))
 
-def send_otp_email(email: str, otp: str) -> tuple[bool, str]:
-    if not SENDGRID_AVAILABLE:
-        return False, "SendGrid library not installed. Run: pip install sendgrid"
-    
+def is_valid_email(email: str) -> bool:
+    return bool(re.match(r"^[^@]+@[^@]+\.[^@]+$", email))
+
+def is_allowed_domain(email: str) -> bool:
+    return email.lower().endswith(ALLOWED_DOMAIN)
+
+def is_otp_expired() -> bool:
+    if not st.session_state.get("otp_created_at"):
+        return True
+    return datetime.now() > st.session_state.otp_created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
+
+def remaining_seconds() -> int:
+    expiry = st.session_state.otp_created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
+    return max(0, int((expiry - datetime.now()).total_seconds()))
+
+# =========================
+# SENDGRID
+# =========================
+def send_otp_email(to_email: str, otp: str):
     api_key = get_sendgrid_api_key()
-    sender_email = get_sender_email()
-    
+    sender = get_sender_email()
+
     if not api_key:
-        return False, "SendGrid API key not configured."
-    
-    subject = "Your login code for VP Space Checker"
-    html_content = f"""
-    <html>
-    <body style="font-family: Arial, sans-serif; padding: 20px;">
-        <h2>Your Login Code</h2>
-        <p>Your one-time login code is:</p>
-        <h1 style="font-size: 32px; letter-spacing: 5px; color: #333; 
-                   background: #f5f5f5; padding: 15px; display: inline-block; 
-                   border-radius: 5px;">{otp}</h1>
-        <p style="color: #666;">This code will expire in {OTP_EXPIRY_MINUTES} minutes.</p>
-    </body>
-    </html>
-    """
-    
+        return False, "SENDGRID_API_KEY missing in Streamlit secrets."
+    if not sender:
+        return False, "OTP_SENDER_EMAIL missing in Streamlit secrets."
+
     message = Mail(
-        from_email=sender_email,
-        to_emails=email,
-        subject=subject,
-        html_content=html_content
+        from_email=sender,
+        to_emails=to_email,
+        subject="Your VP Space Checker login code",
+        html_content=f"""
+        <h2>Your login code</h2>
+        <p>Use the code below to sign in:</p>
+        <h1 style="letter-spacing:4px;">{otp}</h1>
+        <p>This code expires in {OTP_EXPIRY_MINUTES} minutes.</p>
+        """
     )
-    
+
     try:
         sg = SendGridAPIClient(api_key)
         response = sg.send(message)
-        if response.status_code in [200, 201, 202]:
-            return True, "OTP sent successfully!"
-        return False, "Failed to send email. Please try again."
+
+        if response.status_code in (200, 201, 202):
+            return True, "OTP sent"
+        return False, f"SendGrid failed with status {response.status_code}"
+
     except Exception as e:
-        print(f"SendGrid error: {str(e)}")
-        return False, "Failed to send email. Please check your configuration."
+        return False, f"SendGrid error: {str(e)}"
 
-def is_valid_email_format(email: str) -> bool:
-    pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
-    return bool(re.match(pattern, email))
-
-def is_allowed_domain(email: str) -> bool:
-    return email.lower().endswith(ALLOWED_DOMAIN.lower())
-
-def is_otp_expired() -> bool:
-    if "otp_created_at" not in st.session_state:
-        return True
-    created_at = st.session_state.otp_created_at
-    expiry_time = created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
-    return datetime.now() > expiry_time
-
-def get_remaining_time() -> int:
-    if "otp_created_at" not in st.session_state:
-        return 0
-    created_at = st.session_state.otp_created_at
-    expiry_time = created_at + timedelta(minutes=OTP_EXPIRY_MINUTES)
-    remaining = (expiry_time - datetime.now()).total_seconds()
-    return max(0, int(remaining))
-
-def init_session_state():
+# =========================
+# SESSION INIT
+# =========================
+def init_session():
     defaults = {
-        "is_authenticated": False,
-        "user_email": None,
+        "authenticated": False,
+        "otp_sent": False,
         "otp_code": None,
         "otp_created_at": None,
         "otp_attempts": 0,
-        "otp_resend_count": 0,
-        "otp_sent": False,
+        "resend_count": 0,
         "pending_email": None,
     }
-    for key, value in defaults.items():
-        if key not in st.session_state:
-            st.session_state[key] = value
+    for k, v in defaults.items():
+        st.session_state.setdefault(k, v)
 
-def clear_otp_state():
-    st.session_state.otp_code = None
-    st.session_state.otp_created_at = None
-    st.session_state.otp_attempts = 0
-    st.session_state.otp_resend_count = 0
-    st.session_state.otp_sent = False
-    st.session_state.pending_email = None
+def reset_otp():
+    st.session_state.update({
+        "otp_sent": False,
+        "otp_code": None,
+        "otp_created_at": None,
+        "otp_attempts": 0,
+        "resend_count": 0,
+        "pending_email": None,
+    })
 
-def logout():
-    st.session_state.is_authenticated = False
-    st.session_state.user_email = None
-    clear_otp_state()
+# =========================
+# UI
+# =========================
+def show_login():
+    st.markdown("## 🔐 Secure Login")
+    st.caption(f"Only {ALLOWED_DOMAIN} emails allowed")
 
-def show_login_page():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("<h1 style='text-align: center;'>🔐 Login</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #666;'>VP Space Checker</p>", unsafe_allow_html=True)
-        st.markdown("---")
-        if not st.session_state.otp_sent:
-            show_email_step()
-        else:
-            show_otp_step()
-    return st.session_state.is_authenticated
+    if not st.session_state.otp_sent:
+        email = st.text_input("Work email", placeholder=f"name{ALLOWED_DOMAIN}")
 
-def show_email_step():
-    st.markdown("##### Enter your work email")
-    st.caption(f"Only {ALLOWED_DOMAIN} emails are allowed")
-    email = st.text_input("Work Email", placeholder=f"yourname{ALLOWED_DOMAIN}", label_visibility="collapsed", key="email_input")
-    
-    if st.button("Send OTP", use_container_width=True, type="primary"):
-        if not email:
-            st.error("Please enter your email address.")
-        elif not is_valid_email_format(email):
-            st.error("Please enter a valid email address.")
-        elif not is_allowed_domain(email):
-            st.error(f"Only {ALLOWED_DOMAIN} email addresses are allowed.")
-        else:
-            otp = generate_otp()
-            success, message = send_otp_email(email, otp)
-            if success:
-                st.session_state.otp_code = otp
-                st.session_state.otp_created_at = datetime.now()
-                st.session_state.otp_attempts = 0
-                st.session_state.otp_resend_count = 0
-                st.session_state.otp_sent = True
-                st.session_state.pending_email = email.lower()
-                st.success("OTP sent! Check your email.")
-                st.rerun()
+        if st.button("Send OTP", use_container_width=True):
+            if not email:
+                st.error("Email required")
+            elif not is_valid_email(email):
+                st.error("Invalid email format")
+            elif not is_allowed_domain(email):
+                st.error("Email domain not allowed")
             else:
-                st.error(message)
+                otp = generate_otp()
+                ok, msg = send_otp_email(email, otp)
 
-def show_otp_step():
-    email = st.session_state.pending_email
-    st.markdown(f"##### Enter the code sent to")
-    st.markdown(f"**{email}**")
-    
-    if is_otp_expired():
-        st.error("Your code has expired. Please request a new one.")
-        show_resend_button()
-        return
-    
-    remaining_attempts = MAX_OTP_ATTEMPTS - st.session_state.otp_attempts
-    if remaining_attempts <= 0:
-        st.error("Too many failed attempts. Please request a new code.")
-        show_resend_button()
-        return
-    
-    remaining_seconds = get_remaining_time()
-    minutes = remaining_seconds // 60
-    seconds = remaining_seconds % 60
-    st.caption(f"⏱️ Code expires in {minutes}:{seconds:02d}")
-    
-    otp_input = st.text_input("Enter 6-digit code", max_chars=6, placeholder="000000", label_visibility="collapsed", key="otp_input")
-    
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Verify", use_container_width=True, type="primary"):
-            if not otp_input:
-                st.error("Please enter the code.")
-            elif otp_input == st.session_state.otp_code:
-                st.session_state.is_authenticated = True
-                st.session_state.user_email = email
-                clear_otp_state()
-                st.success("✅ Login successful!")
-                time.sleep(1)
+                if ok:
+                    st.session_state.otp_sent = True
+                    st.session_state.otp_code = otp
+                    st.session_state.otp_created_at = datetime.now()
+                    st.session_state.pending_email = email.lower()
+                    st.success("OTP sent. Check your inbox.")
+                    st.rerun()
+                else:
+                    st.error(msg)
+
+    else:
+        email = st.session_state.pending_email
+        st.markdown(f"Code sent to **{email}**")
+
+        if is_otp_expired():
+            st.error("OTP expired")
+            reset_otp()
+            st.rerun()
+
+        seconds = remaining_seconds()
+        st.caption(f"Expires in {seconds//60}:{seconds%60:02d}")
+
+        code = st.text_input("6-digit code", max_chars=6)
+
+        if st.button("Verify", use_container_width=True):
+            if code == st.session_state.otp_code:
+                st.session_state.authenticated = True
+                reset_otp()
+                st.success("Login successful")
+                time.sleep(0.5)
                 st.rerun()
             else:
                 st.session_state.otp_attempts += 1
-                remaining = MAX_OTP_ATTEMPTS - st.session_state.otp_attempts
-                if remaining > 0:
-                    st.error(f"Invalid code. {remaining} attempts remaining.")
-                else:
-                    st.error("Too many failed attempts.")
+                if st.session_state.otp_attempts >= MAX_OTP_ATTEMPTS:
+                    st.error("Too many attempts")
+                    reset_otp()
                     st.rerun()
-    with col2:
-        show_resend_button()
-    
-    st.markdown("---")
-    if st.button("← Use a different email", use_container_width=True):
-        clear_otp_state()
-        st.rerun()
+                else:
+                    st.error("Incorrect code")
 
-def show_resend_button():
-    if st.session_state.otp_resend_count >= MAX_RESEND_COUNT:
-        st.warning("Maximum resend limit reached.")
-        if st.button("Start over", use_container_width=True):
-            clear_otp_state()
-            st.rerun()
-    else:
-        remaining_resends = MAX_RESEND_COUNT - st.session_state.otp_resend_count
-        if st.button(f"Resend code ({remaining_resends} left)", use_container_width=True):
-            email = st.session_state.pending_email
-            otp = generate_otp()
-            success, message = send_otp_email(email, otp)
-            if success:
-                st.session_state.otp_code = otp
-                st.session_state.otp_created_at = datetime.now()
-                st.session_state.otp_attempts = 0
-                st.session_state.otp_resend_count += 1
-                st.success("New code sent!")
-                st.rerun()
-            else:
-                st.error(message)
+        if st.session_state.resend_count < MAX_RESEND_COUNT:
+            if st.button("Resend code"):
+                st.session_state.resend_count += 1
+                otp = generate_otp()
+                ok, msg = send_otp_email(email, otp)
+                if ok:
+                    st.session_state.otp_code = otp
+                    st.session_state.otp_created_at = datetime.now()
+                    st.success("New code sent")
+                    st.rerun()
+                else:
+                    st.error(msg)
 
-def show_logout_button():
-    with st.sidebar:
-        st.markdown("---")
-        if st.session_state.user_email:
-            st.caption(f"Logged in as: {st.session_state.user_email}")
-        if st.button("🚪 Log out", use_container_width=True):
-            logout()
-            st.rerun()
-
-def require_authentication() -> bool:
-    init_session_state()
-    if st.session_state.is_authenticated:
-        return True
-    else:
-        show_login_page()
+# =========================
+# ENTRY POINT
+# =========================
+def require_authentication():
+    init_session()
+    if not st.session_state.authenticated:
+        show_login()
         return False
+    return True
