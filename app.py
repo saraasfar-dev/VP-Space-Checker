@@ -1,3 +1,14 @@
+# At the top of your main file
+from auth import require_authentication, show_logout_button
+
+# Wrap ALL your existing app code like this:
+if require_authentication():
+    show_logout_button()  # Adds logout to sidebar
+    
+    # ===== YOUR EXISTING APP CODE GOES HERE =====
+    # (all your current st.title, st.write, charts, etc.)
+    # =============================================
+
 """
 VP Space Checker - OTP Authentication Module
 ============================================
@@ -466,3 +477,4 @@ if __name__ == "__main__":
         # show_main_app()
         # process_data()
         # etc.
+
