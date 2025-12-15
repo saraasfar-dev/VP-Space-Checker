@@ -4,8 +4,8 @@ VP Space Checker - OTP Authentication Module
 
 CONFIGURATION:
 Set these secrets in Streamlit Cloud (Settings > Secrets):
-    SENDGRID_API_KEY = "your-sendgrid-api-key"
-    OTP_SENDER_EMAIL = "noreply@softwarefinder.com"
+    SENDGRID_API_KEY = "EXKAJTC5A8K3W4FZKD9BZGD8"
+    OTP_SENDER_EMAIL = "saraasfar@softwarefinder.com"
 """
 
 import streamlit as st
